@@ -1,0 +1,5 @@
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+nvidia-ml-py==13.610.43
+psutil==7.2.2
+sqlalchemy==2.0.53
