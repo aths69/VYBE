@@ -6,4 +6,5 @@ node_modules/
 dist/
 *.db
 backend/data/
+.pytest_cache/
 

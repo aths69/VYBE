@@ -1,16 +1,19 @@
-import { useState } from "react";
-import type { SessionInfo } from "../types";
+import { useEffect, useState } from "react";
+import type { GPUInfo, SessionInfo } from "../types";
+import { Badge } from "./Badge";
 
 export function SessionControls({
   session,
   defaultInterval,
+  gpu,
   onStart,
   onStop,
   busy,
 }: {
   session: SessionInfo | null;
   defaultInterval: number;
-  onStart: (workloadName: string, intervalSeconds: number) => Promise<void>;
+  gpu: GPUInfo | null;
+  onStart: (workloadName: string, intervalSeconds: number, simulate: boolean) => Promise<void>;
   onStop: (outputCount?: number, outputUnit?: string) => Promise<void>;
   busy: boolean;
 }) {
@@ -18,6 +21,17 @@ export function SessionControls({
   const [interval, setInterval_] = useState(String(defaultInterval));
   const [outputCount, setOutputCount] = useState("");
   const [outputUnit, setOutputUnit] = useState("images");
+  const [simulate, setSimulate] = useState(false);
+  const [simulateTouched, setSimulateTouched] = useState(false);
+
+  // Default to demo/simulation mode once real GPU detection completes and
+  // finds nothing (Section 24) - but never override a choice the user made.
+  useEffect(() => {
+    if (!simulateTouched && gpu !== null) {
+      setSimulate(!gpu.available);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpu?.available]);
 
   const running = session?.status === "running";
 
@@ -31,39 +45,71 @@ export function SessionControls({
       </div>
 
       {!running ? (
-        <div className="controls-row">
-          <div className="field" style={{ flex: 2 }}>
-            <label>Workload name</label>
-            <input
-              type="text"
-              placeholder="e.g. ResNet training"
-              value={workloadName}
-              onChange={(e) => setWorkloadName(e.target.value)}
-            />
+        <>
+          <div className="controls-row">
+            <div className="field" style={{ flex: 2 }}>
+              <label>Workload name</label>
+              <input
+                type="text"
+                placeholder="e.g. ResNet training"
+                value={workloadName}
+                onChange={(e) => setWorkloadName(e.target.value)}
+              />
+            </div>
+            <div className="field" style={{ width: 110 }}>
+              <label>Interval (s)</label>
+              <input
+                type="number"
+                min="0.1"
+                step="0.5"
+                value={interval}
+                onChange={(e) => setInterval_(e.target.value)}
+              />
+            </div>
+            <button
+              className="primary"
+              disabled={busy || !workloadName.trim()}
+              onClick={() =>
+                onStart(workloadName.trim(), Number(interval) || defaultInterval, simulate)
+              }
+            >
+              Start Session
+            </button>
           </div>
-          <div className="field" style={{ width: 110 }}>
-            <label>Interval (s)</label>
-            <input
-              type="number"
-              min="0.1"
-              step="0.5"
-              value={interval}
-              onChange={(e) => setInterval_(e.target.value)}
-            />
-          </div>
-          <button
-            className="primary"
-            disabled={busy || !workloadName.trim()}
-            onClick={() => onStart(workloadName.trim(), Number(interval) || defaultInterval)}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 10,
+              fontSize: 12,
+              color: "var(--text-dim)",
+            }}
           >
-            Start Session
-          </button>
-        </div>
+            <input
+              type="checkbox"
+              checked={simulate}
+              onChange={(e) => {
+                setSimulate(e.target.checked);
+                setSimulateTouched(true);
+              }}
+            />
+            Run in simulation mode (demo) - synthetic telemetry, not real hardware
+            {gpu !== null && !gpu.available && " (recommended: no NVIDIA GPU detected)"}
+          </label>
+        </>
       ) : (
         <>
           <div className="metric-row">
             <span className="metric-row-label">Workload</span>
-            <span className="metric-row-value">{session.workload_name}</span>
+            <span className="metric-row-value">
+              {session.workload_name}
+              {session.is_simulated && (
+                <span style={{ marginLeft: 8 }}>
+                  <Badge kind="simulated">Simulated</Badge>
+                </span>
+              )}
+            </span>
           </div>
           <div className="metric-row">
             <span className="metric-row-label">Samples collected</span>

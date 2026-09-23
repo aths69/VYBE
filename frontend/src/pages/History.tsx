@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { Badge } from "../components/Badge";
 import type { SessionListItem } from "../types";
+
+const MAX_COMPARE = 8;
 
 export function History() {
   const navigate = useNavigate();
@@ -12,6 +15,7 @@ export function History() {
   const [sortBy, setSortBy] = useState("start_time");
   const [sortDir, setSortDir] = useState("desc");
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   async function load() {
     try {
@@ -39,10 +43,33 @@ export function History() {
     if (!confirm("Delete this session permanently?")) return;
     try {
       await api.deleteSession(sessionId);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  function toggleSelected(e: React.ChangeEvent<HTMLInputElement>, sessionId: string) {
+    e.stopPropagation();
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else if (next.size < MAX_COMPARE) {
+        next.add(sessionId);
+      }
+      return next;
+    });
+  }
+
+  function handleCompare() {
+    if (selected.size < 2) return;
+    navigate(`/compare?ids=${Array.from(selected).join(",")}`);
   }
 
   return (
@@ -50,8 +77,14 @@ export function History() {
       <div className="page-header">
         <div>
           <div className="page-title">Session History</div>
-          <div className="page-subtitle">{total} session(s) recorded</div>
+          <div className="page-subtitle">
+            {total} session(s) recorded
+            {selected.size > 0 && ` · ${selected.size} selected for comparison`}
+          </div>
         </div>
+        <button className="primary" disabled={selected.size < 2} onClick={handleCompare}>
+          Compare Selected{selected.size >= 2 ? ` (${selected.size})` : ""}
+        </button>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
@@ -98,6 +131,7 @@ export function History() {
         <table>
           <thead>
             <tr>
+              <th></th>
               <th>Workload</th>
               <th>Status</th>
               <th>Start Time</th>
@@ -111,7 +145,23 @@ export function History() {
           <tbody>
             {items.map((item) => (
               <tr key={item.session_id} onClick={() => navigate(`/history/${item.session_id}`)}>
-                <td>{item.workload_name}</td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(item.session_id)}
+                    disabled={item.status !== "stopped"}
+                    title={item.status !== "stopped" ? "Stop the session before comparing" : undefined}
+                    onChange={(e) => toggleSelected(e, item.session_id)}
+                  />
+                </td>
+                <td>
+                  {item.workload_name}
+                  {item.is_simulated && (
+                    <span style={{ marginLeft: 6 }}>
+                      <Badge kind="simulated">Simulated</Badge>
+                    </span>
+                  )}
+                </td>
                 <td>{item.status}</td>
                 <td>{new Date(item.start_time + "Z").toLocaleString()}</td>
                 <td>{item.runtime_seconds.toFixed(1)}</td>
@@ -129,7 +179,7 @@ export function History() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: "center", color: "var(--text-faint)" }}>
+                <td colSpan={9} style={{ textAlign: "center", color: "var(--text-faint)" }}>
                   No sessions found
                 </td>
               </tr>

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type Kind = "measured" | "calculated" | "estimated" | "warning" | "info";
+type Kind = "measured" | "calculated" | "estimated" | "warning" | "info" | "simulated";
 
 // Section 2: measured/calculated/estimated must be visually distinguished
 // everywhere they appear in the UI, not just documented in text.

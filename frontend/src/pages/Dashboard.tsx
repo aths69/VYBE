@@ -130,11 +130,11 @@ export function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.session_id, session?.status]);
 
-  async function handleStart(workloadName: string, intervalSeconds: number) {
+  async function handleStart(workloadName: string, intervalSeconds: number, simulate: boolean) {
     setBusy(true);
     setError(null);
     try {
-      const info = await api.startSession(workloadName, intervalSeconds);
+      const info = await api.startSession(workloadName, intervalSeconds, simulate);
       setSession(info);
       setSamples([]);
       setCalc(null);
@@ -182,6 +182,19 @@ export function Dashboard() {
 
       {error && <div className="error-banner">{error}</div>}
 
+      {session?.is_simulated && (
+        <div className="simulation-banner">
+          ⚠ Simulation mode - this session's telemetry is synthetically generated for
+          demonstration and does not reflect real hardware behavior.
+        </div>
+      )}
+      {finishedSummary?.is_simulated && !session && (
+        <div className="simulation-banner">
+          ⚠ Simulation mode - the last completed session used synthetic telemetry, not real
+          measurements.
+        </div>
+      )}
+
       {finishedSummary && !session && (
         <div className="assumptions-note" style={{ marginBottom: 14 }}>
           Last completed: <strong>{finishedSummary.workload_name}</strong> —{" "}
@@ -195,6 +208,7 @@ export function Dashboard() {
         <SessionControls
           session={session}
           defaultInterval={config?.telemetry_interval_seconds ?? 1}
+          gpu={gpu}
           onStart={handleStart}
           onStop={handleStop}
           busy={busy}

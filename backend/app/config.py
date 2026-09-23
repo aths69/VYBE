@@ -78,6 +78,12 @@ class Settings:
     # (Section 23: don't overengineer security for a college prototype).
     cors_origins: str = _env_str("VYBE_CORS_ORIGINS", "*")
 
+    # Set only in the Docker image (Section 31): the built frontend's static
+    # files, mounted by main.py so one container serves both the API and the
+    # dashboard on one port. Empty/unset in local dev, where the frontend
+    # runs separately via `npm run dev`.
+    static_dir: str = _env_str("VYBE_STATIC_DIR", "")
+
 
 settings = Settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)

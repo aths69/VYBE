@@ -15,6 +15,7 @@
   --green: #37e08f;
   --amber: #f5b34d;
   --red: #f0605c;
+  --purple: #c792ea;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -267,6 +268,25 @@ a {
   color: var(--text-dim);
   background: rgba(125, 142, 163, 0.1);
   border: 1px solid rgba(125, 142, 163, 0.3);
+}
+
+.badge-simulated {
+  color: var(--purple);
+  background: rgba(199, 146, 234, 0.1);
+  border: 1px solid rgba(199, 146, 234, 0.3);
+}
+
+.simulation-banner {
+  background: rgba(199, 146, 234, 0.08);
+  border: 1px solid rgba(199, 146, 234, 0.35);
+  color: var(--purple);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 16px;
 }
 
 /* ---------- metrics ---------- */

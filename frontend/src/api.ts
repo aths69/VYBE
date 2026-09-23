@@ -3,6 +3,7 @@ import type {
   EfficiencyAnalysis,
   GPUInfo,
   SessionCalculations,
+  SessionComparisonResponse,
   SessionDetail,
   SessionInfo,
   SessionListResponse,
@@ -43,12 +44,13 @@ export const api = {
   getSystemInfo: () => request<SystemInfo>("/api/system/info"),
   getConfig: () => request<ConfigResponse>("/api/config"),
 
-  startSession: (workloadName: string, intervalSeconds?: number) =>
+  startSession: (workloadName: string, intervalSeconds?: number, simulate?: boolean) =>
     request<SessionInfo>("/api/sessions/start", {
       method: "POST",
       body: JSON.stringify({
         workload_name: workloadName,
         interval_seconds: intervalSeconds ?? null,
+        simulate: simulate ?? false,
       }),
     }),
 
@@ -105,6 +107,16 @@ export const api = {
     request<{ deleted: boolean }>(`/api/sessions/${sessionId}`, {
       method: "DELETE",
     }),
+
+  compareSessions: (sessionIds: string[]) => {
+    const q = new URLSearchParams();
+    sessionIds.forEach((id) => q.append("session_ids", id));
+    return request<SessionComparisonResponse>(`/api/sessions/compare?${q.toString()}`);
+  },
+
+  // Opened directly in a new tab (window.open) rather than fetched - the
+  // endpoint returns a printable HTML page, not JSON.
+  getReportUrl: (sessionId: string) => `${API_BASE}/api/sessions/${sessionId}/report`,
 };
 
 export { ApiError };

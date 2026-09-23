@@ -1,4 +1,5 @@
 import { NavLink, Route, Routes } from "react-router-dom";
+import { Compare } from "./pages/Compare";
 import { Dashboard } from "./pages/Dashboard";
 import { History } from "./pages/History";
 import { SessionDetailPage } from "./pages/SessionDetailPage";
@@ -30,6 +31,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/history" element={<History />} />
           <Route path="/history/:id" element={<SessionDetailPage />} />
+          <Route path="/compare" element={<Compare />} />
         </Routes>
       </main>
     </div>

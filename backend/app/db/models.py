@@ -33,6 +33,7 @@ class SessionRecord(Base):
     runtime_seconds: Mapped[float]
     sample_count: Mapped[int]
     gpu_available: Mapped[bool]
+    is_simulated: Mapped[bool] = mapped_column(default=False)
     useful_output_count: Mapped[int | None]
     useful_output_unit: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)

@@ -88,6 +88,7 @@ export interface SessionInfo {
   interval_seconds: number;
   sample_count: number;
   gpu_available: boolean;
+  is_simulated: boolean;
 }
 
 export interface SessionSummary extends SessionInfo {
@@ -173,6 +174,7 @@ export interface SessionListItem {
   runtime_seconds: number;
   sample_count: number;
   gpu_available: boolean;
+  is_simulated: boolean;
   total_energy_kwh: number | null;
   total_cost: number | null;
   currency: string | null;
@@ -193,6 +195,7 @@ export interface SessionDetail {
   runtime_seconds: number;
   sample_count: number;
   gpu_available: boolean;
+  is_simulated: boolean;
   useful_output_count: number | null;
   useful_output_unit: string | null;
   hardware: SessionHardwareSnapshot | null;
@@ -209,6 +212,40 @@ export interface EfficiencyAnalysis {
   session_id: string;
   sample_count: number;
   recommendations: Recommendation[];
+}
+
+export interface TelemetryStats {
+  label: "MEASURED";
+  average_gpu_utilization_percent: number | null;
+  peak_gpu_utilization_percent: number | null;
+  average_vram_used_mb: number | null;
+  peak_vram_used_mb: number | null;
+  peak_temperature_c: number | null;
+  average_cpu_utilization_percent: number | null;
+  average_ram_used_percent: number | null;
+  peak_ram_used_percent: number | null;
+}
+
+export interface SessionComparisonItem {
+  session_id: string;
+  workload_name: string;
+  status: SessionStatus;
+  start_time: string;
+  end_time: string | null;
+  runtime_seconds: number;
+  is_simulated: boolean;
+  useful_output_count: number | null;
+  useful_output_unit: string | null;
+  stats: TelemetryStats;
+  energy: EnergyResult;
+  cost: CostResult;
+  carbon: CarbonResult;
+  yield_metrics: YieldMetrics | null;
+}
+
+export interface SessionComparisonResponse {
+  sessions: SessionComparisonItem[];
+  warnings: string[];
 }
 
 export interface ConfigResponse {

@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from app.config import settings
 from app.hardware.gpu import close_gpu_handle, detect_gpu, open_gpu_handle, sample_gpu
+from app.hardware.simulator import SimulatedWorkloadState, simulated_hardware_snapshot
 from app.hardware.system import cpu_ram_snapshot, detect_system
 from app.schemas import (
     GPUSample,
@@ -54,6 +55,8 @@ class _Session:
     status: str = "running"
     gpu_handle: object = None
     gpu_available: bool = False
+    simulate: bool = False
+    sim_state: SimulatedWorkloadState | None = None
     hardware_snapshot: SessionHardwareSnapshot | None = None
     samples: list[TelemetrySample] = field(default_factory=list)
     samples_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -66,7 +69,9 @@ class SessionManager:
         self._lock = threading.Lock()
         self._active: _Session | None = None
 
-    def start(self, workload_name: str, interval_seconds: float | None) -> SessionInfo:
+    def start(
+        self, workload_name: str, interval_seconds: float | None, simulate: bool = False
+    ) -> SessionInfo:
         with self._lock:
             if self._active is not None:
                 raise SessionAlreadyRunningError(
@@ -79,10 +84,19 @@ class SessionManager:
                 workload_name=workload_name,
                 interval_seconds=interval,
                 start_time=datetime.now(timezone.utc),
+                simulate=simulate,
             )
-            session.gpu_handle = open_gpu_handle()
-            session.gpu_available = session.gpu_handle is not None
-            session.hardware_snapshot = self._snapshot_hardware()
+            if simulate:
+                # Section 24: synthetic telemetry, never a real NVML handle -
+                # gpu_available=True here means "this session has GPU-shaped
+                # samples", distinct from is_simulated meaning "they're fake".
+                session.gpu_available = True
+                session.hardware_snapshot = simulated_hardware_snapshot()
+                session.sim_state = SimulatedWorkloadState(seed=session.id)
+            else:
+                session.gpu_handle = open_gpu_handle()
+                session.gpu_available = session.gpu_handle is not None
+                session.hardware_snapshot = self._snapshot_hardware()
 
             session.thread = threading.Thread(
                 target=self._poll_loop, args=(session,), daemon=True
@@ -189,6 +203,7 @@ class SessionManager:
             interval_seconds=session.interval_seconds,
             sample_count=sample_count,
             gpu_available=session.gpu_available,
+            is_simulated=session.simulate,
         )
 
     def _poll_loop(self, session: _Session) -> None:
@@ -214,12 +229,16 @@ class SessionManager:
 
     @staticmethod
     def _capture_sample(session: _Session, idx: int) -> TelemetrySample:
-        try:
-            gpu_sample = sample_gpu(session.gpu_handle)
-        except Exception as exc:  # never let a bad poll kill the loop
-            gpu_sample = GPUSample(available=False, error=str(exc))
+        if session.simulate:
+            assert session.sim_state is not None  # always set when simulate=True
+            gpu_sample, cpu_percent, ram_percent, ram_used_mb = session.sim_state.step()
+        else:
+            try:
+                gpu_sample = sample_gpu(session.gpu_handle)
+            except Exception as exc:  # never let a bad poll kill the loop
+                gpu_sample = GPUSample(available=False, error=str(exc))
 
-        cpu_percent, ram_percent, ram_used_mb = cpu_ram_snapshot()
+            cpu_percent, ram_percent, ram_used_mb = cpu_ram_snapshot()
 
         return TelemetrySample(
             sample_index=idx,

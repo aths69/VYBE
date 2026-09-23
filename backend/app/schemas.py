@@ -106,6 +106,15 @@ class TelemetrySample(BaseModel):
 class StartSessionRequest(BaseModel):
     workload_name: str = Field(..., min_length=1, max_length=200)
     interval_seconds: float | None = Field(default=None, gt=0, le=60)
+    simulate: bool = Field(
+        default=False,
+        description=(
+            "Section 24 demonstration mode: generate synthetic telemetry "
+            "instead of querying real hardware. Every simulated session is "
+            "tagged is_simulated=True end-to-end so it can never be mistaken "
+            "for a real measurement."
+        ),
+    )
 
 
 class StopSessionRequest(BaseModel):
@@ -128,6 +137,7 @@ class SessionInfo(BaseModel):
     interval_seconds: float
     sample_count: int
     gpu_available: bool
+    is_simulated: bool = False
 
 
 class SessionSummary(SessionInfo):
@@ -186,6 +196,22 @@ class YieldMetrics(BaseModel):
     cost_per_1000_units: float
 
 
+class TelemetryStats(BaseModel):
+    """Averages/peaks of directly-measured per-sample values (Section 2) -
+    aggregated from raw telemetry, not derived through a cost/energy model,
+    so this stays labeled MEASURED rather than CALCULATED/ESTIMATED."""
+
+    label: str = "MEASURED"
+    average_gpu_utilization_percent: float | None = None
+    peak_gpu_utilization_percent: float | None = None
+    average_vram_used_mb: float | None = None
+    peak_vram_used_mb: float | None = None
+    peak_temperature_c: float | None = None
+    average_cpu_utilization_percent: float | None = None
+    average_ram_used_percent: float | None = None
+    peak_ram_used_percent: float | None = None
+
+
 class SessionCalculations(BaseModel):
     session_id: str
     energy: EnergyResult
@@ -219,6 +245,7 @@ class SessionListItem(BaseModel):
     runtime_seconds: float
     sample_count: int
     gpu_available: bool
+    is_simulated: bool = False
     total_energy_kwh: float | None = None
     total_cost: float | None = None
     currency: str | None = None
@@ -239,10 +266,41 @@ class SessionDetail(BaseModel):
     runtime_seconds: float
     sample_count: int
     gpu_available: bool
+    is_simulated: bool = False
     useful_output_count: int | None = None
     useful_output_unit: str | None = None
     hardware: SessionHardwareSnapshot | None = None
     calculations: SessionCalculations | None = None
+
+
+class SessionComparisonItem(BaseModel):
+    """One session's numbers for Section 13's side-by-side comparison.
+
+    Reuses the same default-assumption metrics snapshot as the history list
+    (Section 2's SessionMetricsRecord) rather than recomputing with fresh
+    overrides, so two sessions being compared are always judged under the
+    same rate/currency/carbon-intensity assumptions.
+    """
+
+    session_id: str
+    workload_name: str
+    status: str
+    start_time: datetime
+    end_time: datetime | None = None
+    runtime_seconds: float
+    is_simulated: bool = False
+    useful_output_count: int | None = None
+    useful_output_unit: str | None = None
+    stats: TelemetryStats
+    energy: EnergyResult
+    cost: CostResult
+    carbon: CarbonResult
+    yield_metrics: YieldMetrics | None = None
+
+
+class SessionComparisonResponse(BaseModel):
+    sessions: list[SessionComparisonItem]
+    warnings: list[str] = []
 
 
 class ConfigResponse(BaseModel):

@@ -21,7 +21,9 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 @router.post("/start", response_model=SessionInfo)
 def start_session(payload: StartSessionRequest) -> SessionInfo:
     try:
-        return session_manager.start(payload.workload_name, payload.interval_seconds)
+        return session_manager.start(
+            payload.workload_name, payload.interval_seconds, payload.simulate
+        )
     except SessionAlreadyRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -67,6 +69,7 @@ def session_status(session_id: str) -> SessionInfo:
         interval_seconds=detail.interval_seconds,
         sample_count=detail.sample_count,
         gpu_available=detail.gpu_available,
+        is_simulated=detail.is_simulated,
     )
 
 

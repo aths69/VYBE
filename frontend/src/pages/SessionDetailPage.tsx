@@ -44,16 +44,38 @@ export function SessionDetailPage() {
 
   return (
     <div>
+      {detail.is_simulated && (
+        <div className="simulation-banner">
+          ⚠ Simulation mode - this session's telemetry is synthetically generated for
+          demonstration and does not reflect real hardware behavior.
+        </div>
+      )}
       <div className="page-header">
         <div>
-          <div className="page-title">{detail.workload_name}</div>
+          <div className="page-title">
+            {detail.workload_name}
+            {detail.is_simulated && (
+              <span style={{ marginLeft: 10 }}>
+                <Badge kind="simulated">Simulated</Badge>
+              </span>
+            )}
+          </div>
           <div className="page-subtitle">
             <Link to="/history">&larr; back to history</Link>
           </div>
         </div>
-        <button className="danger" onClick={handleDelete}>
-          Delete Session
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="primary"
+            onClick={() => window.open(api.getReportUrl(id!), "_blank")}
+            disabled={detail.status !== "stopped"}
+          >
+            Generate Report
+          </button>
+          <button className="danger" onClick={handleDelete}>
+            Delete Session
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2">
@@ -92,7 +114,9 @@ export function SessionDetailPage() {
         <div className="panel">
           <div className="panel-header">
             <span className="panel-title">Hardware Snapshot</span>
-            <Badge kind="measured">Measured</Badge>
+            <Badge kind={detail.is_simulated ? "simulated" : "measured"}>
+              {detail.is_simulated ? "Simulated" : "Measured"}
+            </Badge>
           </div>
           {!detail.hardware ? (
             <div className="panel-body-empty">No hardware snapshot recorded</div>

@@ -1,0 +1,52 @@
+# VYBE — docker compose (Section 31).
+#
+# Usage:
+#   docker compose up --build
+#   -> open http://localhost:8000  (or http://<host-ip>:8000 from another
+#      machine on the network)
+#
+# ─────────────────────────────────────────────────────────────────────────
+# GPU ACCESS IS NOT AUTOMATIC. Docker does not grant GPU access by default.
+# To let this container see a real NVIDIA GPU, the HOST machine needs the
+# NVIDIA Container Toolkit installed first:
+#   https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+#
+# Without it, `docker compose up` still works fine - the app just reports
+# "GPU unavailable" (Section 3: it never fabricates GPU data), at which
+# point use Simulation Mode (Section 24) to demonstrate the platform.
+#
+# The `deploy.resources.reservations.devices` block below is the Compose
+# equivalent of `docker run --gpus all` and requires the toolkit to be
+# present on the host to take effect. If your Docker/Compose version
+# doesn't support this block, either upgrade, or run the built image
+# directly with `docker run --gpus all ...` instead of compose.
+# ─────────────────────────────────────────────────────────────────────────
+
+services:
+  vybe:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - vybe_data:/app/data
+    environment:
+      VYBE_ELECTRICITY_RATE: "10.0"
+      VYBE_CURRENCY: "INR"
+      VYBE_CARBON_INTENSITY_KG_PER_KWH: "0.7"
+      VYBE_WATER_WUE_L_PER_KWH: "1.8"
+      VYBE_WATER_ESTIMATION_ENABLED: "true"
+      VYBE_TELEMETRY_INTERVAL_SECONDS: "1.0"
+      VYBE_CORS_ORIGINS: "*"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  vybe_data:

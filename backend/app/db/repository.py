@@ -13,14 +13,11 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 
 from app.analysis.efficiency import analyze_efficiency
+from app.analysis.stats import compute_telemetry_stats
 from app.calculations.carbon import CARBON_NOTE, compute_carbon
 from app.calculations.cost import compute_cost
 from app.calculations.energy import compute_energy
-from app.calculations.water import (
-    WATER_DISABLED_NOTE,
-    WATER_ENABLED_NOTE,
-    compute_water,
-)
+from app.calculations.water import compute_water
 from app.calculations.yield_metrics import compute_yield
 from app.config import settings
 from app.db.engine import SessionLocal
@@ -38,12 +35,12 @@ from app.schemas import (
     GPUProcessInfo,
     GPUSample,
     SessionCalculations,
+    SessionComparisonItem,
     SessionDetail,
     SessionHardwareSnapshot,
     SessionListItem,
     SessionSummary,
     TelemetrySample,
-    WaterResult,
 )
 
 _SORTABLE_COLUMNS = {
@@ -85,6 +82,7 @@ def save_completed_session(
                 runtime_seconds=summary.runtime_seconds,
                 sample_count=summary.sample_count,
                 gpu_available=summary.gpu_available,
+                is_simulated=summary.is_simulated,
                 useful_output_count=summary.useful_output_count,
                 useful_output_unit=summary.useful_output_unit,
             )
@@ -190,6 +188,7 @@ def list_sessions(
                     runtime_seconds=row.runtime_seconds,
                     sample_count=row.sample_count,
                     gpu_available=row.gpu_available,
+                    is_simulated=bool(row.is_simulated),
                     total_energy_kwh=metrics.total_energy_kwh if metrics else None,
                     total_cost=metrics.total_cost if metrics else None,
                     currency=metrics.currency if metrics else None,
@@ -200,6 +199,12 @@ def list_sessions(
 
 
 def get_session_detail(session_id: str) -> SessionDetail | None:
+    """Recomputes energy/cost/carbon/water fresh from raw telemetry_samples,
+    like /calculations and the report generator do - not from the
+    SessionMetricsRecord snapshot (that snapshot exists only to make
+    list_sessions's history table fast; reusing it here previously dropped
+    computed warnings, e.g. "GPU power unavailable", every time a session was
+    revisited after the run that produced them)."""
     with SessionLocal() as db:
         row = db.get(SessionRecord, session_id)
         if row is None:
@@ -223,61 +228,103 @@ def get_session_detail(session_id: str) -> SessionDetail | None:
             else None
         )
 
-        metrics_row = db.get(SessionMetricsRecord, session_id)
-        calculations = None
-        if metrics_row:
-            energy = EnergyResult(
-                total_energy_wh=metrics_row.total_energy_wh,
-                total_energy_kwh=metrics_row.total_energy_kwh,
-                average_power_w=metrics_row.average_power_w,
-                peak_power_w=metrics_row.peak_power_w,
-                sample_count=row.sample_count,
-                runtime_seconds=row.runtime_seconds,
-                intervals_used=metrics_row.intervals_used,
-                intervals_skipped=metrics_row.intervals_skipped,
-                coverage_seconds=metrics_row.coverage_seconds,
-                warnings=[],
-            )
-            cost = CostResult(
-                currency=metrics_row.currency,
-                rate_per_kwh=metrics_row.rate_per_kwh,
-                total_cost=metrics_row.total_cost,
-            )
-            calculations = SessionCalculations(
-                session_id=session_id,
-                energy=energy,
-                cost=cost,
-                carbon=CarbonResult(
-                    carbon_intensity_kg_per_kwh=metrics_row.carbon_intensity_kg_per_kwh,
-                    estimated_kg_co2e=metrics_row.estimated_kg_co2e,
-                    note=CARBON_NOTE,
-                ),
-                water=WaterResult(
-                    enabled=metrics_row.water_enabled,
-                    wue_l_per_kwh=metrics_row.wue_l_per_kwh,
-                    estimated_liters=metrics_row.estimated_liters,
-                    note=WATER_ENABLED_NOTE if metrics_row.water_enabled else WATER_DISABLED_NOTE,
-                ),
-                yield_metrics=compute_yield(
-                    energy, cost, row.useful_output_count, row.useful_output_unit
-                ),
-            )
+    samples = get_telemetry(session_id) or []
+    energy = compute_energy(samples)
+    cost = compute_cost(energy.total_energy_kwh, settings.electricity_rate, settings.currency)
+    carbon = compute_carbon(energy.total_energy_kwh, settings.carbon_intensity_kg_per_kwh)
+    water = compute_water(
+        energy.total_energy_kwh,
+        settings.water_wue_l_per_kwh,
+        settings.water_estimation_enabled,
+    )
+    calculations = SessionCalculations(
+        session_id=session_id,
+        energy=energy,
+        cost=cost,
+        carbon=carbon,
+        water=water,
+        yield_metrics=compute_yield(
+            energy, cost, row.useful_output_count, row.useful_output_unit
+        ),
+    )
 
-        return SessionDetail(
+    return SessionDetail(
+        session_id=row.id,
+        workload_name=row.workload_name,
+        status=row.status,
+        start_time=row.start_time,
+        end_time=row.end_time,
+        interval_seconds=row.interval_seconds,
+        runtime_seconds=row.runtime_seconds,
+        sample_count=row.sample_count,
+        gpu_available=row.gpu_available,
+        is_simulated=bool(row.is_simulated),
+        useful_output_count=row.useful_output_count,
+        useful_output_unit=row.useful_output_unit,
+        hardware=hardware,
+        calculations=calculations,
+    )
+
+
+def get_comparison_item(session_id: str) -> SessionComparisonItem | None:
+    """One session's row for Section 13 comparison.
+
+    Only sessions that have finished and been persisted (i.e. have a
+    SessionMetricsRecord) can be compared - a still-running session has no
+    stored default-assumption snapshot yet.
+    """
+    with SessionLocal() as db:
+        row = db.get(SessionRecord, session_id)
+        if row is None:
+            return None
+
+        metrics_row = db.get(SessionMetricsRecord, session_id)
+        if metrics_row is None:
+            return None
+
+        energy = EnergyResult(
+            total_energy_wh=metrics_row.total_energy_wh,
+            total_energy_kwh=metrics_row.total_energy_kwh,
+            average_power_w=metrics_row.average_power_w,
+            peak_power_w=metrics_row.peak_power_w,
+            sample_count=row.sample_count,
+            runtime_seconds=row.runtime_seconds,
+            intervals_used=metrics_row.intervals_used,
+            intervals_skipped=metrics_row.intervals_skipped,
+            coverage_seconds=metrics_row.coverage_seconds,
+            warnings=[],
+        )
+        cost = CostResult(
+            currency=metrics_row.currency,
+            rate_per_kwh=metrics_row.rate_per_kwh,
+            total_cost=metrics_row.total_cost,
+        )
+        carbon = CarbonResult(
+            carbon_intensity_kg_per_kwh=metrics_row.carbon_intensity_kg_per_kwh,
+            estimated_kg_co2e=metrics_row.estimated_kg_co2e,
+            note=CARBON_NOTE,
+        )
+
+        item = SessionComparisonItem(
             session_id=row.id,
             workload_name=row.workload_name,
             status=row.status,
             start_time=row.start_time,
             end_time=row.end_time,
-            interval_seconds=row.interval_seconds,
             runtime_seconds=row.runtime_seconds,
-            sample_count=row.sample_count,
-            gpu_available=row.gpu_available,
+            is_simulated=bool(row.is_simulated),
             useful_output_count=row.useful_output_count,
             useful_output_unit=row.useful_output_unit,
-            hardware=hardware,
-            calculations=calculations,
+            stats=compute_telemetry_stats(get_telemetry(session_id) or []),
+            energy=energy,
+            cost=cost,
+            carbon=carbon,
+            yield_metrics=compute_yield(
+                energy, cost, row.useful_output_count, row.useful_output_unit
+            ),
         )
+
+    return item
 
 
 def get_hardware(session_id: str) -> SessionHardwareSnapshot | None:
